@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Kalkulator Konversi Kurs</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --txt: #333333;
+      --box: #f5f5f5;
+    }
+    body.dark {
+      --bg: #121212;
+      --txt: #f4f4f4;
+      --box: #1e1e1e;
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: var(--bg);
+      color: var(--txt);
+      font-family: Arial, sans-serif;
+      transition: background 0.3s, color 0.3s;
+    }
+    .container {
+      max-width: 700px;
+      margin: 80px auto;
+      padding: 20px;
+      background: var(--box);
+      border-radius: 12px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+    }
+    .theme-toggle {
+      position: fixed;
+      top: 15px;
+      right: 15px;
+      width: 40px;
+      height: 40px;
+      font-size: 20px;
+      border: none;
+      border-radius: 50%;
+      background: #007bff;
+      color: #fff;
+      cursor: pointer;
+      z-index: 1000;
+    }
+    h1 {
+      text-align: center;
+    }
+    select, input {
+      width: 100%;
+      padding: 12px;
+      margin-top: 10px;
+      font-size: 16px;
+      background: var(--box);
+      color: var(--txt);
+      border: 1px solid #ccc;
+      border-radius: 6px;
+    }
+    .result {
+      font-size: 30px;
+      text-align: center;
+      margin: 20px 0;
+      color: #007bff;
+      font-weight: bold;
+    }
+    canvas {
+      width: 100% !important;
+      height: 300px !important;
+      background: var(--box);
+      padding: 10px;
+      border-radius: 10px;
+    }
+  </style>
+</head>
+<body>
+
+  <button class="theme-toggle" id="themeToggle">🌙</button>
+
+  <div class="container">
+    <h1>Kalkulator Konversi Kurs</h1>
+
+    <select id="currencySelect">
+      <option value="USD">USD - Dollar AS</option>
+      <option value="EUR">EUR - Euro</option>
+      <option value="JPY">JPY - Yen Jepang</option>
+      <option value="SGD">SGD - Dollar Singapura</option>
+      <option value="GBP">GBP - Poundsterling</option>
+    </select>
+
+    <input type="number" id="amountInput" placeholder="Masukkan jumlah uang" />
+
+    <div class="result" id="result">Rp 0</div>
+
+    <canvas id="rateChart"></canvas>
+  </div>
+
+  <script>
+    let rateChart, currentRate = 0;
+
+    const toggleBtn = document.getElementById("themeToggle");
+    const select = document.getElementById("currencySelect");
+    const input = document.getElementById("amountInput");
+    const result = document.getElementById("result");
+
+    // Toggle tema
+    toggleBtn.addEventListener("click", () => {
+      document.body.classList.toggle("dark");
+      toggleBtn.textContent = document.body.classList.contains("dark") ? "☀️" : "🌙";
+      updateChartTheme();
+    });
+
+    // Update hasil konversi saat input berubah
+    input.addEventListener("input", () => {
+      const value = parseFloat(input.value);
+      if (!isNaN(value)) {
+        result.textContent = "Rp " + (value * currentRate).toLocaleString("id-ID");
+      } else {
+        result.textContent = "Rp 0";
+      }
+    });
+
+    // Update grafik dan kurs saat mata uang berubah
+    select.addEventListener("change", () => {
+      fetchRateAndChart(select.value);
+    });
+
+    // Ambil kurs & data grafik
+    async function fetchRateAndChart(currency) {
+      try {
+        const rateRes = await fetch(`https://api.exchangerate.host/latest?base=${currency}&symbols=IDR`);
+        const rateData = await rateRes.json();
+        currentRate = rateData.rates.IDR;
+
+        const amount = parseFloat(input.value);
+        result.textContent = "Rp " + ((amount || 1) * currentRate).toLocaleString("id-ID");
+
+        const end = new Date();
+        const start = new Date();
+        start.setDate(end.getDate() - 6);
+        const fmt = d => d.toISOString().split("T")[0];
+        const historyRes = await fetch(`https://api.exchangerate.host/timeseries?start_date=${fmt(start)}&end_date=${fmt(end)}&base=${currency}&symbols=IDR`);
+        const historyData = await historyRes.json();
+
+        const dates = Object.keys(historyData.rates).sort();
+        const values = dates.map(date => historyData.rates[date].IDR);
+
+        drawChart(dates, values, currency);
+      } catch (err) {
+        alert("Gagal memuat data. Pastikan Anda terhubung ke internet.");
+        console.error(err);
+      }
+    }
+
+    // Gambar grafik
+    function drawChart(labels, data, currency) {
+      const ctx = document.getElementById("rateChart").getContext("2d");
+      if (rateChart) rateChart.destroy();
+
+      const textColor = getComputedStyle(document.documentElement).getPropertyValue('--txt').trim();
+
+      rateChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{
+            label: `Kurs ${currency} ke IDR (7 Hari)`,
+            data,
+            borderColor: '#007bff',
+            backgroundColor: 'rgba(0,123,255,0.1)',
+            fill: true,
+            tension: 0.3
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { labels: { color: textColor } },
+            tooltip: { bodyColor: textColor, titleColor: textColor }
+          },
+          scales: {
+            x: { ticks: { color: textColor }, grid: { color: 'rgba(0,0,0,0.05)' } },
+            y: { ticks: { color: textColor }, grid: { color: 'rgba(0,0,0,0.05)' } }
+          }
+        }
+      });
+    }
+
+    // Perbarui warna grafik saat tema diubah
+    function updateChartTheme() {
+      if (!rateChart) return;
+      const color = getComputedStyle(document.documentElement).getPropertyValue('--txt').trim();
+      rateChart.options.plugins.legend.labels.color = color;
+      rateChart.options.plugins.tooltip.bodyColor = color;
+      rateChart.options.plugins.tooltip.titleColor = color;
+      rateChart.options.scales.x.ticks.color = color;
+      rateChart.options.scales.y.ticks.color = color;
+      rateChart.update();
+    }
+
+    // Inisialisasi awal
+    window.onload = () => {
+      fetchRateAndChart(select.value);
+    };
+  </script>
+</body>
+</html>
